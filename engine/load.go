@@ -33,7 +33,9 @@ import (
 	"github.com/yaoapp/yao/i18n"
 	"github.com/yaoapp/yao/job"
 	"github.com/yaoapp/yao/kb"
+	"github.com/yaoapp/yao/llmprovider"
 	"github.com/yaoapp/yao/mcp"
+	"github.com/yaoapp/yao/mcpclient"
 	"github.com/yaoapp/yao/messenger"
 	"github.com/yaoapp/yao/model"
 	"github.com/yaoapp/yao/monitor"
@@ -421,6 +423,22 @@ func Load(cfg config.Config, options LoadOption, progressCallback ...func(string
 		}
 	}()
 
+	// Initialize LLM Provider Registry
+	err = loadStep("LLM Provider", func() error {
+		return llmprovider.Init()
+	}, callback)
+	if err != nil {
+		warnings = append(warnings, Warning{Widget: "LLM Provider", Error: err})
+	}
+
+	// Initialize MCP Client Registry
+	err = loadStep("MCP Client Registry", func() error {
+		return mcpclient.Init()
+	}, callback)
+	if err != nil {
+		warnings = append(warnings, Warning{Widget: "MCP Client Registry", Error: err})
+	}
+
 	for name, hook := range LoadHooks {
 		err = hook(cfg)
 		if err != nil {
@@ -653,6 +671,32 @@ func Reload(cfg config.Config, options LoadOption) (err error) {
 	err = agent.Load(cfg)
 	if err != nil {
 		printErr(cfg.Mode, "Agent", err)
+	}
+
+	// Reload LLM Provider Registry
+	if llmprovider.Global != nil {
+		err = llmprovider.Global.Reload()
+		if err != nil {
+			printErr(cfg.Mode, "LLM Provider", err)
+		}
+	} else {
+		err = llmprovider.Init()
+		if err != nil {
+			printErr(cfg.Mode, "LLM Provider", err)
+		}
+	}
+
+	// Reload MCP Client Registry
+	if mcpclient.Global != nil {
+		err = mcpclient.Global.Reload()
+		if err != nil {
+			printErr(cfg.Mode, "MCP Client Registry", err)
+		}
+	} else {
+		err = mcpclient.Init()
+		if err != nil {
+			printErr(cfg.Mode, "MCP Client Registry", err)
+		}
 	}
 
 	// Load OpenAPI

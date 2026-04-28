@@ -1,0 +1,199 @@
+package llmprovider
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/yaoapp/gou/connector"
+)
+
+// connectorID builds the runtime ID for registering into connector.Connectors.
+// Dynamic providers get an owner prefix to avoid collision with builtin IDs.
+func connectorID(p *Provider) string {
+	switch p.Owner.Type {
+	case "user":
+		return "u" + p.Owner.UserID + "." + p.Key
+	case "team":
+		return "t" + p.Owner.TeamID + "." + p.Key
+	default:
+		return "s." + p.Key
+	}
+}
+
+// defaultModel returns the first enabled model ID, or empty string.
+func defaultModel(p *Provider) string {
+	for _, m := range p.Models {
+		if m.Enabled {
+			return m.ID
+		}
+	}
+	if len(p.Models) > 0 {
+		return p.Models[0].ID
+	}
+	return ""
+}
+
+// marshalDSL builds a connector DSL JSON from the flat Provider fields.
+func marshalDSL(p *Provider) ([]byte, error) {
+	dsl := map[string]interface{}{
+		"type":  p.Type,
+		"name":  p.Name,
+		"label": p.Name,
+		"options": map[string]interface{}{
+			"host":  p.APIURL,
+			"key":   p.APIKey,
+			"model": defaultModel(p),
+		},
+	}
+	return json.Marshal(dsl)
+}
+
+// ensureConnector makes sure the provider's connector is registered in the runtime.
+// Builtin providers are managed by engine.Load and skipped here.
+func ensureConnector(p *Provider) error {
+	if p.Source == ProviderSourceBuiltIn {
+		return nil
+	}
+	if !p.Enabled {
+		return nil
+	}
+
+	cid := p.ConnectorID
+	if cid == "" {
+		cid = connectorID(p)
+	}
+
+	if _, err := connector.Select(cid); err == nil {
+		return nil
+	}
+
+	dslJSON, err := marshalDSL(p)
+	if err != nil {
+		return fmt.Errorf("ensureConnector %s: marshal DSL: %w", p.Key, err)
+	}
+
+	_, err = connector.LoadSourceSync(dslJSON, cid, "__registry/"+cid+".conn.yao")
+	if err != nil {
+		return fmt.Errorf("ensureConnector %s: LoadSourceSync: %w", p.Key, err)
+	}
+
+	return nil
+}
+
+// unregisterConnector removes the provider's connector from the runtime.
+func unregisterConnector(p *Provider) error {
+	if p.Source == ProviderSourceBuiltIn {
+		return nil
+	}
+	cid := p.ConnectorID
+	if cid == "" {
+		cid = connectorID(p)
+	}
+	return connector.Unregister(cid)
+}
+
+// importFromConnectors scans existing AI connectors loaded by engine.Load
+// and imports them as builtin providers into the Registry store.
+// If a store record with the same key already exists (dynamic), it is not overwritten.
+func importFromConnectors(r *Registry) error {
+	for _, opt := range connector.AIConnectors {
+		id := opt.Value
+		if r.store.Has(storeKey(id)) {
+			continue
+		}
+
+		conn, err := connector.Select(id)
+		if err != nil {
+			continue
+		}
+
+		p := providerFromConnector(id, conn)
+		m, err := providerToMap(&p, r.encKey)
+		if err != nil {
+			continue
+		}
+		sk := storeKey(id)
+		_ = r.store.Set(sk, m, 0)
+		if r.cache != nil {
+			_ = r.cache.Set(sk, m, 0)
+		}
+		_ = indexAdd(r.store, r.cache, id)
+	}
+	return nil
+}
+
+// providerFromConnector builds a Provider from a runtime Connector interface.
+func providerFromConnector(id string, conn connector.Connector) Provider {
+	meta := conn.GetMetaInfo()
+	setting := conn.Setting()
+
+	name := meta.Label
+	if name == "" {
+		name = id
+	}
+
+	typ := connectorType(conn)
+	apiURL, _ := setting["host"].(string)
+	apiKey, _ := setting["key"].(string)
+	model, _ := setting["model"].(string)
+
+	var models []ModelInfo
+	if model != "" {
+		caps := capabilitiesFromSetting(setting)
+		models = []ModelInfo{{
+			ID:           model,
+			Name:         model,
+			Capabilities: caps,
+			Enabled:      true,
+		}}
+	}
+
+	return Provider{
+		Key:         id,
+		ConnectorID: id,
+		Name:        name,
+		Type:        typ,
+		APIURL:      apiURL,
+		APIKey:      apiKey,
+		Models:      models,
+		Enabled:     true,
+		Status:      "connected",
+		Source:      ProviderSourceBuiltIn,
+		Owner:       ProviderOwner{Type: "system"},
+	}
+}
+
+func connectorType(conn connector.Connector) string {
+	switch {
+	case conn.Is(6): // OPENAI
+		return "openai"
+	case conn.Is(11): // ANTHROPIC
+		return "anthropic"
+	case conn.Is(9): // FASTEMBED
+		return "fastembed"
+	case conn.Is(8): // MOAPI
+		return "moapi"
+	default:
+		return "custom"
+	}
+}
+
+func capabilitiesFromSetting(setting map[string]interface{}) []string {
+	raw, ok := setting["capabilities"]
+	if !ok {
+		return nil
+	}
+
+	switch caps := raw.(type) {
+	case map[string]interface{}:
+		var out []string
+		for k, v := range caps {
+			if b, ok := v.(bool); ok && b {
+				out = append(out, k)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
