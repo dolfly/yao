@@ -380,7 +380,7 @@ func handleSmtpTest(c *gin.Context) {
 // ---------------------------------------------------------------------------
 
 func smtpValidateConnection(host string, port int, encryption, username, password string) error {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	auth := smtp.PlainAuth("", username, password, host)
 
 	switch encryption {
@@ -443,7 +443,7 @@ func smtpValidateConnection(host string, port int, encryption, username, passwor
 // ---------------------------------------------------------------------------
 
 func smtpSendTestEmail(host string, port int, encryption, username, password, fromName, fromEmail, toEmail string) error {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
 	subject := "Yao SMTP Test"
 	body := "This is a test email from Yao to verify your SMTP configuration."
