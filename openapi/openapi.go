@@ -27,6 +27,7 @@ import (
 	"github.com/yaoapp/yao/openapi/otp"
 	"github.com/yaoapp/yao/openapi/response"
 	"github.com/yaoapp/yao/openapi/sandbox"
+	openAPISetting "github.com/yaoapp/yao/openapi/setting"
 	openapiTai "github.com/yaoapp/yao/openapi/tai"
 	"github.com/yaoapp/yao/openapi/team"
 	openapiTrace "github.com/yaoapp/yao/openapi/trace"
@@ -198,6 +199,9 @@ func (openapi *OpenAPI) Attach(router *gin.Engine) {
 	group.POST("/tai-nodes/register", taiapi.HandleRegister)
 	group.POST("/tai-nodes/heartbeat", taiapi.HandleHeartbeat)
 	group.DELETE("/tai-nodes/register/:tai_id", taiapi.HandleUnregister)
+
+	// Setting handlers (unified /setting/* endpoints)
+	openAPISetting.Attach(group.Group("/setting"), openapi.OAuth)
 
 	// Custom handlers (Defined by developer)
 

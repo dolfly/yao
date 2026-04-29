@@ -1,0 +1,61 @@
+- key: yaoagents
+  name: Yao Agents
+  type: openai
+  api_url: https://api.yaoagents.com
+  require_key: false
+  is_cloud: true
+  default_models:
+    - id: default
+      name: Default
+      capabilities: [vision, tool_calls, streaming]
+      enabled: true
+
+- key: openai
+  name: OpenAI
+  type: openai
+  api_url: https://api.openai.com
+  require_key: true
+  default_models:
+    - id: gpt-4o
+      name: GPT-4o
+      capabilities: [vision, tool_calls, streaming, json]
+      enabled: true
+    - id: gpt-4o-mini
+      name: GPT-4o Mini
+      capabilities: [tool_calls, streaming, json]
+      enabled: true
+    - id: o3-mini
+      name: o3-mini
+      capabilities: [tool_calls, streaming, reasoning]
+      enabled: false
+
+- key: anthropic
+  name: Anthropic
+  type: anthropic
+  api_url: https://api.anthropic.com
+  require_key: true
+  default_models:
+    - id: claude-sonnet-4-20250514
+      name: Claude Sonnet 4
+      capabilities: [vision, tool_calls, streaming, reasoning]
+      enabled: true
+    - id: claude-haiku-3-5-20241022
+      name: Claude Haiku 3.5
+      capabilities: [tool_calls, streaming]
+      enabled: true
+
+- key: ollama
+  name: Ollama
+  type: openai
+  api_url: http://localhost:11434
+  require_key: false
+  url_editable: true
+  default_models: []
+
+- key: azure
+  name: Azure OpenAI
+  type: openai
+  api_url: ""
+  require_key: true
+  url_editable: true
+  default_models: []
